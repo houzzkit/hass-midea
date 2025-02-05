@@ -1,4 +1,4 @@
-colorlog==6.8.2
+colorlog==6.9.0
 ffmpeg==1.4
 mypy-dev==1.11.0a6
 mutagen==1.47.0

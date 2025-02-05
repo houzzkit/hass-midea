@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
-from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
+from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow, ConfigEntryBaseFlow
 from homeassistant.const import (
     CONF_CUSTOMIZE,
     CONF_DEVICE,
@@ -79,10 +79,12 @@ from .const import (
     EXTRA_SENSOR,
 )
 from .midea_devices import MIDEA_DEVICES
+from .util import appliances_store
 
 _LOGGER = logging.getLogger(__name__)
 
 ADD_WAY = {
+    "cloud": "通过[美的美居]账号集成",
     "discovery": "Discover automatically",
     "manually": "Configure manually",
     "list": "List all appliances only",
@@ -97,7 +99,190 @@ STORAGE_PATH = f".storage/{DOMAIN}"
 SKIP_LOGIN = "Skip Login (input any user/password)"
 
 
-class MideaLanConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
+class BaseFlow(ConfigEntryBaseFlow):
+    cloud: MideaCloud | None = None
+    session = None
+    preset_cloud_name: str = SMARTHOME
+    preset_account: str = bytes.fromhex(
+        format((PRESET_ACCOUNT_DATA[0] ^ PRESET_ACCOUNT_DATA[1]), "X"),
+    ).decode("ASCII")
+    preset_password: str = bytes.fromhex(
+        format((PRESET_ACCOUNT_DATA[0] ^ PRESET_ACCOUNT_DATA[2]), "X"),
+    ).decode("ASCII")
+    appliances: dict | None = None
+
+    async def async_step_cloud(
+        self,
+        user_input: dict[str, Any] | None = None,
+        error: str | None = None,
+    ) -> ConfigFlowResult:
+        cloud_servers = await MideaCloud.get_cloud_servers()
+        default_keys = await MideaCloud.get_default_keys()
+        # add skip login option to web UI with key 99
+        cloud_servers[next(iter(default_keys))] = SKIP_LOGIN
+
+        schema = {}
+        if not user_input:
+            """ show form """
+            schema = {
+                vol.Required(CONF_ACCOUNT): str,
+                vol.Required(CONF_PASSWORD): str,
+            }
+
+        # user input data exist
+        elif account := user_input.get(CONF_ACCOUNT):
+            password = user_input[CONF_PASSWORD]
+            cloud_server = "美的美居"
+            _LOGGER.debug("user input login: %s", account)
+            # set a login_mode flag
+            self.hass.data.setdefault(DOMAIN, {})
+            self.hass.data[DOMAIN]["login_mode"] = "input"
+
+            # cloud login MUST pass with user input or perset account
+            if await self._check_cloud_login(
+                cloud_name=cloud_server,
+                account=account,
+                password=password,
+                force_login=True,
+            ):
+                # save passed account to cache, available before HA reboot
+                self.hass.data[DOMAIN]["login_data"] = {
+                    CONF_ACCOUNT: account,
+                    CONF_PASSWORD: password,
+                    CONF_SERVER: cloud_server,
+                }
+                self.appliances = await self.list_all_appliances() or {}
+                devices = {
+                    str(id): f"{d["name"]} ({d["model"]})"
+                    for id, d in self.appliances.items()
+                }
+                schema = {
+                    vol.Required('cloud_devices'): cv.multi_select(devices),
+                }
+            else:
+                # return error with login failed
+                error = "login_failed"
+                _LOGGER.warning(
+                    "ERROR: Failed to login with %s account in %s server",
+                    self.hass.data[DOMAIN]["login_mode"],
+                    cloud_server,
+                )
+
+        elif user_input.get('cloud_devices'):
+            data = {
+                **self.hass.data[DOMAIN]["login_data"],
+                **user_input,
+                CONF_TYPE: CONF_ACCOUNT,
+            }
+            discover_devices = discover()
+            for device_id, d in self.appliances.items():
+                keys = await self.cloud.get_cloud_keys(device_id)
+                d['cloud_keys'] = keys
+                d['discover'] = discover_devices.get(device_id, {})
+                if not d.get('host'):
+                    d['host'] = d['discover'].get('ip_address')
+            await appliances_store(self.hass, data[CONF_ACCOUNT], self.appliances)
+            # finish add device entry
+            return self.async_create_entry(
+                title=f"{data[CONF_ACCOUNT]}",
+                data=data,
+            )
+
+        # user not login, show login form in UI
+        return self.async_show_form(
+            step_id="cloud",
+            data_schema=vol.Schema(schema),
+            errors={"base": error} if error else None,
+        )
+
+    async def _check_cloud_login(
+        self,
+        cloud_name: str | None = None,
+        account: str | None = None,
+        password: str | None = None,
+        force_login: bool = False,
+    ) -> bool:
+        """Check cloud login.
+
+        Returns
+        -------
+        True if cloud login succeeded
+
+        """
+        # set default args with perset account
+        if cloud_name is None or account is None or password is None:
+            cloud_name = self.preset_cloud_name
+            account = self.preset_account
+            password = self.preset_password
+
+        if self.session is None:
+            self.session = async_create_clientsession(self.hass)
+
+        # init cloud object or force reinit with new one
+        if self.cloud is None or force_login:
+            self.cloud = get_midea_cloud(
+                cloud_name,
+                self.session,
+                account,
+                password,
+            )
+        # check cloud login after self.cloud exist
+        if await self.cloud.login():
+            _LOGGER.debug(
+                "Using account %s login to %s cloud pass",
+                account,
+                cloud_name,
+            )
+            return True
+        _LOGGER.debug(
+            "ERROR: unable to use account %s login to %s cloud",
+            account,
+            cloud_name,
+        )
+        return False
+
+    async def list_all_appliances(self) -> dict | None:
+        """List Meiju Cloud devices."""
+        appliances = {}
+        homes = await self.cloud.list_home() or {}
+        for home_id, home_name in homes.items():
+            response = await self.cloud._api_request(
+                endpoint="/v1/appliance/home/list/get",
+                data={"homegroupId": home_id},
+            )
+            if not response:
+                continue
+            for home in response.get("homeList") or []:
+                for room in home.get("roomList") or []:
+                    for appliance in room.get("applianceList"):
+                        try:
+                            model_number = int(appliance.get("modelNumber", 0))
+                        except (ValueError, TypeError):
+                            model_number = 0
+                        sn8 = appliance.get("sn8") or "00000000"
+                        device_info = {
+                            "name": appliance.get("name"),
+                            "type": int(appliance.get("type"), 16),
+                            "sn": (
+                                self.cloud._security.aes_decrypt(appliance.get("sn"))
+                                if appliance.get("sn")
+                                else ""
+                            ),
+                            "sn8": sn8,
+                            "model_number": model_number,
+                            "manufacturer_code": appliance.get(
+                                "enterpriseCode",
+                                "0000",
+                            ),
+                            "host": appliance.get("host"),
+                            "model": appliance.get("productModel") or sn8,
+                            "online": appliance.get("onlineStatus") == "1",
+                            "appliance": appliance,
+                        }
+                        appliances[int(appliance["applianceCode"])] = device_info
+        return appliances
+
+class MideaLanConfigFlow(ConfigFlow, BaseFlow, domain=DOMAIN):  # type: ignore[call-arg]
     """Define current integration setup steps.
 
     Use ConfigFlow handle to support config entries
@@ -207,6 +392,9 @@ class MideaLanConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
         """
         # user select a device discovery mode
         if user_input is not None:
+            if user_input["action"] == "cloud":
+                return await self.async_step_cloud()
+
             # default is auto discovery mode
             if user_input["action"] == "discovery":
                 return await self.async_step_discovery()
@@ -223,7 +411,7 @@ class MideaLanConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
         return self.async_show_form(
             step_id="user",
             data_schema=vol.Schema(
-                {vol.Required("action", default="discovery"): vol.In(ADD_WAY)},
+                {vol.Required("action", default="cloud"): vol.In(ADD_WAY)},
             ),
             errors={"base": error} if error else None,
         )
@@ -425,52 +613,6 @@ class MideaLanConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
             ),
             errors={"base": error} if error else None,
         )
-
-    async def _check_cloud_login(
-        self,
-        cloud_name: str | None = None,
-        account: str | None = None,
-        password: str | None = None,
-        force_login: bool = False,
-    ) -> bool:
-        """Check cloud login.
-
-        Returns
-        -------
-        True if cloud login succeeded
-
-        """
-        # set default args with perset account
-        if cloud_name is None or account is None or password is None:
-            cloud_name = self.preset_cloud_name
-            account = self.preset_account
-            password = self.preset_password
-
-        if self.session is None:
-            self.session = async_create_clientsession(self.hass)
-
-        # init cloud object or force reinit with new one
-        if self.cloud is None or force_login:
-            self.cloud = get_midea_cloud(
-                cloud_name,
-                self.session,
-                account,
-                password,
-            )
-        # check cloud login after self.cloud exist
-        if await self.cloud.login():
-            _LOGGER.debug(
-                "Using account %s login to %s cloud pass",
-                account,
-                cloud_name,
-            )
-            return True
-        _LOGGER.debug(
-            "ERROR: unable to use account %s login to %s cloud",
-            account,
-            cloud_name,
-        )
-        return False
 
     async def _check_key_from_cloud(
         self,
@@ -898,7 +1040,7 @@ class MideaLanConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
         return MideaLanOptionsFlowHandler(config_entry)
 
 
-class MideaLanOptionsFlowHandler(OptionsFlow):
+class MideaLanOptionsFlowHandler(OptionsFlow, BaseFlow):
     """define an Options Flow Handler to update the options of a config entry."""
 
     def __init__(self, config_entry: ConfigEntry) -> None:

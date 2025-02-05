@@ -29,21 +29,22 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up humidifier entries."""
-    device_id = config_entry.data.get(CONF_DEVICE_ID)
-    device = hass.data[DOMAIN][DEVICES].get(device_id)
-    extra_switches = config_entry.options.get(CONF_SWITCHES, [])
-    devs: list[MideaA1Humidifier | MideaFDHumidifier] = []
-    for entity_key, config in cast(
-        "dict",
-        MIDEA_DEVICES[device.device_type]["entities"],
-    ).items():
-        if config["type"] == Platform.HUMIDIFIER and (
-            config.get("default") or entity_key in extra_switches
-        ):
-            if device.device_type == DeviceType.A1:
-                devs.append(MideaA1Humidifier(device, entity_key))
-            if device.device_type == DeviceType.FD:
-                devs.append(MideaFDHumidifier(device, entity_key))
+    devs = []
+    entry_data = hass.data[DOMAIN].get(config_entry.entry_id, {})
+    for device_id, device in entry_data.get(DEVICES, {}).items():
+        extra_switches = config_entry.options.get(CONF_SWITCHES, [])
+        devs: list[MideaA1Humidifier | MideaFDHumidifier] = []
+        for entity_key, config in cast(
+            "dict",
+            MIDEA_DEVICES[device.device_type]["entities"],
+        ).items():
+            if config["type"] == Platform.HUMIDIFIER and (
+                config.get("default") or entity_key in extra_switches
+            ):
+                if device.device_type == DeviceType.A1:
+                    devs.append(MideaA1Humidifier(device, entity_key))
+                if device.device_type == DeviceType.FD:
+                    devs.append(MideaFDHumidifier(device, entity_key))
     async_add_entities(devs)
 
 

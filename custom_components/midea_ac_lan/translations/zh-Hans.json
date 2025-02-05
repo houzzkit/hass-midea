@@ -17,6 +17,15 @@
         "description": "选择添加设备的方式",
         "title": "添加新设备"
       },
+      "cloud": {
+        "data": {
+          "account": "账号",
+          "password": "密码",
+          "cloud_devices": "筛选设备"
+        },
+        "description": "通过【美的美居】账号集成",
+        "title": "登录"
+      },
       "login": {
         "data": {
           "account": "账号",

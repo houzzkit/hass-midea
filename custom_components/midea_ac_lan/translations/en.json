@@ -17,6 +17,15 @@
         "description": "Choose the way to add a appliance",
         "title": "Add new appliance"
       },
+      "cloud": {
+        "data": {
+          "account": "Account",
+          "password": "Password",
+          "cloud_devices": "Select devices"
+        },
+        "description": "Integrate the devices by Midea Meiju account.",
+        "title": "Login"
+      },
       "login": {
         "data": {
           "account": "Account",

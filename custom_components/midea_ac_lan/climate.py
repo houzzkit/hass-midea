@@ -70,33 +70,27 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up climate entries."""
-    device_id = config_entry.data.get(CONF_DEVICE_ID)
-    device = hass.data[DOMAIN][DEVICES].get(device_id)
-    extra_switches = config_entry.options.get(CONF_SWITCHES, [])
-    devs: list[
-        MideaACClimate
-        | MideaCCClimate
-        | MideaCFClimate
-        | MideaC3Climate
-        | MideaFBClimate
-    ] = []
-    for entity_key, config in cast(
-        "dict",
-        MIDEA_DEVICES[device.device_type]["entities"],
-    ).items():
-        if config["type"] == Platform.CLIMATE and (
-            config.get("default") or entity_key in extra_switches
-        ):
-            if device.device_type == DeviceType.AC:
-                devs.append(MideaACClimate(device, entity_key))
-            elif device.device_type == DeviceType.CC:
-                devs.append(MideaCCClimate(device, entity_key))
-            elif device.device_type == DeviceType.CF:
-                devs.append(MideaCFClimate(device, entity_key))
-            elif device.device_type == DeviceType.C3:
-                devs.append(MideaC3Climate(device, entity_key, config["zone"]))
-            elif device.device_type == DeviceType.FB:
-                devs.append(MideaFBClimate(device, entity_key))
+    devs = []
+    entry_data = hass.data[DOMAIN].get(config_entry.entry_id, {})
+    for device_id, device in entry_data.get(DEVICES, {}).items():
+        extra_switches = config_entry.options.get(CONF_SWITCHES, [])
+        for entity_key, config in cast(
+            "dict",
+            MIDEA_DEVICES[device.device_type]["entities"],
+        ).items():
+            if config["type"] == Platform.CLIMATE and (
+                config.get("default") or entity_key in extra_switches
+            ):
+                if device.device_type == DeviceType.AC:
+                    devs.append(MideaACClimate(device, entity_key))
+                elif device.device_type == DeviceType.CC:
+                    devs.append(MideaCCClimate(device, entity_key))
+                elif device.device_type == DeviceType.CF:
+                    devs.append(MideaCFClimate(device, entity_key))
+                elif device.device_type == DeviceType.C3:
+                    devs.append(MideaC3Climate(device, entity_key, config["zone"]))
+                elif device.device_type == DeviceType.FB:
+                    devs.append(MideaFBClimate(device, entity_key))
     async_add_entities(devs)
 
 

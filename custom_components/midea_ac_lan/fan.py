@@ -35,29 +35,27 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up fan entries."""
-    device_id = config_entry.data.get(CONF_DEVICE_ID)
-    device = hass.data[DOMAIN][DEVICES].get(device_id)
-    extra_switches = config_entry.options.get(CONF_SWITCHES, [])
-    devs: list[
-        MideaFAFan | MideaB6Fan | MideaACFreshAirFan | MideaCEFan | MideaX40Fan
-    ] = []
-    for entity_key, config in cast(
-        "dict",
-        MIDEA_DEVICES[device.device_type]["entities"],
-    ).items():
-        if config["type"] == Platform.FAN and (
-            config.get("default") or entity_key in extra_switches
-        ):
-            if device.device_type == DeviceType.FA:
-                devs.append(MideaFAFan(device, entity_key))
-            elif device.device_type == DeviceType.B6:
-                devs.append(MideaB6Fan(device, entity_key))
-            elif device.device_type == DeviceType.AC:
-                devs.append(MideaACFreshAirFan(device, entity_key))
-            elif device.device_type == DeviceType.CE:
-                devs.append(MideaCEFan(device, entity_key))
-            elif device.device_type == DeviceType.X40:
-                devs.append(MideaX40Fan(device, entity_key))
+    devs = []
+    entry_data = hass.data[DOMAIN].get(config_entry.entry_id, {})
+    for device_id, device in entry_data.get(DEVICES, {}).items():
+        extra_switches = config_entry.options.get(CONF_SWITCHES, [])
+        for entity_key, config in cast(
+            "dict",
+            MIDEA_DEVICES[device.device_type]["entities"],
+        ).items():
+            if config["type"] == Platform.FAN and (
+                config.get("default") or entity_key in extra_switches
+            ):
+                if device.device_type == DeviceType.FA:
+                    devs.append(MideaFAFan(device, entity_key))
+                elif device.device_type == DeviceType.B6:
+                    devs.append(MideaB6Fan(device, entity_key))
+                elif device.device_type == DeviceType.AC:
+                    devs.append(MideaACFreshAirFan(device, entity_key))
+                elif device.device_type == DeviceType.CE:
+                    devs.append(MideaCEFan(device, entity_key))
+                elif device.device_type == DeviceType.X40:
+                    devs.append(MideaX40Fan(device, entity_key))
     async_add_entities(devs)
 
 

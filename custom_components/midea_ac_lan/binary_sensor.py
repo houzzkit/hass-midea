@@ -22,17 +22,17 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up sensors for device."""
-    device_id = config_entry.data.get(CONF_DEVICE_ID)
-    device = hass.data[DOMAIN][DEVICES].get(device_id)
-    extra_sensors = config_entry.options.get(CONF_SENSORS, [])
     binary_sensors = []
-    for entity_key, config in cast(
-        "dict",
-        MIDEA_DEVICES[device.device_type]["entities"],
-    ).items():
-        if config["type"] == Platform.BINARY_SENSOR and entity_key in extra_sensors:
-            sensor = MideaBinarySensor(device, entity_key)
-            binary_sensors.append(sensor)
+    entry_data = hass.data[DOMAIN].get(config_entry.entry_id, {})
+    for device_id, device in entry_data.get(DEVICES, {}).items():
+        extra_sensors = config_entry.options.get(CONF_SENSORS, [])
+        for entity_key, config in cast(
+            "dict",
+            MIDEA_DEVICES[device.device_type]["entities"],
+        ).items():
+            if config["type"] == Platform.BINARY_SENSOR and entity_key in extra_sensors:
+                sensor = MideaBinarySensor(device, entity_key)
+                binary_sensors.append(sensor)
     async_add_entities(binary_sensors)
 
 

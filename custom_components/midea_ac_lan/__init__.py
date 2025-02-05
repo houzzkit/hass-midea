@@ -21,6 +21,7 @@ from homeassistant.const import (
     CONF_DEVICE_ID,
     CONF_IP_ADDRESS,
     CONF_NAME,
+    CONF_HOST,
     CONF_PORT,
     CONF_PROTOCOL,
     CONF_TOKEN,
@@ -30,6 +31,7 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.typing import ConfigType
+from midealocal.cloud import MideaCloud
 from midealocal.device import DeviceType, MideaDevice, ProtocolVersion
 from midealocal.devices import device_selector
 
@@ -45,6 +47,7 @@ from .const import (
     EXTRA_SWITCH,
 )
 from .midea_devices import MIDEA_DEVICES
+from .util import appliances_store
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -184,7 +187,12 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
     True if entry is configured.
 
     """
+    entry_data = hass.data.setdefault(DOMAIN, {}).setdefault(config_entry.entry_id, {})
+    entry_devices = entry_data.setdefault(DEVICES, {})
+
     device_type = config_entry.data.get(CONF_TYPE)
+    if "cloud_devices" in config_entry.data:
+        return await async_setup_cloud(hass, config_entry)
     if device_type == CONF_ACCOUNT:
         return True
     name = config_entry.data.get(CONF_NAME)
@@ -243,6 +251,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
         if refresh_interval is not None:
             device.set_refresh_interval(refresh_interval)
         device.open()
+        entry_devices[device_id] = device
         if DOMAIN not in hass.data:
             hass.data[DOMAIN] = {}
         if DEVICES not in hass.data[DOMAIN]:
@@ -256,6 +265,41 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
         config_entry.async_on_unload(config_entry.add_update_listener(update_listener))
         return True
     return False
+
+
+async def async_setup_cloud(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
+    entry_data = hass.data.setdefault(DOMAIN, {}).setdefault(config_entry.entry_id, {})
+    entry_devices = entry_data.setdefault(DEVICES, {})
+
+    device_ids = config_entry.data.get('cloud_devices') or []
+    appliances = await appliances_store(hass, config_entry.data[CONF_ACCOUNT]) or {}
+    for device_id, d in appliances.items():
+        if device_id not in device_ids:
+            continue
+        keys = d.get('keys') or await MideaCloud.get_default_keys()
+        key = next(iter(keys.values()))
+        device = await hass.async_add_import_executor_job(
+            device_selector,
+            d.get(CONF_NAME, 'Meiju'),
+            device_id,
+            d.get(CONF_TYPE, 0xAC),
+            d.get(CONF_HOST, ''),
+            d.get(CONF_PORT),
+            key.get('token'),
+            key.get('key'),
+            ProtocolVersion.V3,
+            d.get(CONF_MODEL),
+            d.get('model_number', 0),
+            '' or {},
+        )
+        if not device:
+            _LOGGER.warning("Failed to setup device: %s", d)
+            continue
+        device.open()
+        entry_devices[device_id] = device
+        _LOGGER.info("Setup device: %s", d)
+    await hass.config_entries.async_forward_entry_setups(config_entry, ALL_PLATFORM)
+    return True
 
 
 async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:

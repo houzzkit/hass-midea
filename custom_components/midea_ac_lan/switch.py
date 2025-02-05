@@ -19,17 +19,17 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up switches for device."""
-    device_id = config_entry.data.get(CONF_DEVICE_ID)
-    device = hass.data[DOMAIN][DEVICES].get(device_id)
-    extra_switches = config_entry.options.get(CONF_SWITCHES, [])
     switches = []
-    for entity_key, config in cast(
-        "dict",
-        MIDEA_DEVICES[device.device_type]["entities"],
-    ).items():
-        if config["type"] == Platform.SWITCH and entity_key in extra_switches:
-            dev = MideaSwitch(device, entity_key)
-            switches.append(dev)
+    entry_data = hass.data[DOMAIN].get(config_entry.entry_id, {})
+    for device_id, device in entry_data.get(DEVICES, {}).items():
+        extra_switches = config_entry.options.get(CONF_SWITCHES, [])
+        for entity_key, config in cast(
+            "dict",
+            MIDEA_DEVICES[device.device_type]["entities"],
+        ).items():
+            if config["type"] == Platform.SWITCH and entity_key in extra_switches:
+                dev = MideaSwitch(device, entity_key)
+                switches.append(dev)
     async_add_entities(switches)
 
 

@@ -181,6 +181,7 @@ class BaseFlow(ConfigEntryBaseFlow):
                 d['discover'] = discover_devices.get(device_id, {})
                 if not d.get('host'):
                     d['host'] = d['discover'].get('ip_address')
+                    d['port'] = d['discover'].get('port')
             await appliances_store(self.hass, data[CONF_ACCOUNT], self.appliances)
             # finish add device entry
             return self.async_create_entry(

@@ -284,7 +284,7 @@ async def async_setup_cloud(hass: HomeAssistant, config_entry: ConfigEntry) -> b
             device_id,
             d.get(CONF_TYPE, 0xAC),
             d.get(CONF_HOST, ''),
-            d.get(CONF_PORT),
+            d.get(CONF_PORT, 0),
             key.get('token'),
             key.get('key'),
             ProtocolVersion.V3,

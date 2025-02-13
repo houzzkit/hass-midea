@@ -276,7 +276,7 @@ async def async_setup_cloud(hass: HomeAssistant, config_entry: ConfigEntry) -> b
     for device_id, d in appliances.items():
         if device_id not in device_ids:
             continue
-        keys = d.get('keys') or await MideaCloud.get_default_keys()
+        keys = d.get('cloud_keys') or await MideaCloud.get_default_keys()
         key = next(iter(keys.values()))
         device = await hass.async_add_import_executor_job(
             device_selector,

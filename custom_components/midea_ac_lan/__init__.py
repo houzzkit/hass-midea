@@ -182,16 +182,21 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:  # noqa:
     async def service_cloud_keys(call: Any):
         device_id = call.data.get('device_id', 0)
         account = call.data.get('account')
+        logs = []
         for entry_data in hass.data.get(DOMAIN, {}).values():
+            if not isinstance(entry_data, dict):
+                continue
             if not (cloud := entry_data.get('cloud')):
                 continue
             if account and account != cloud._account:
                 continue
             keys = await cloud.get_cloud_keys(device_id)
+            logs.append(keys)
             if keys:
                 return keys
         return {
             'msg': 'not match',
+            'logs': logs,
         }
     hass.services.async_register(
         DOMAIN, 'cloud_keys', service_cloud_keys,

@@ -5,6 +5,9 @@ from .const import DOMAIN
 async def appliances_store(hass: HomeAssistant, uid: str, data=None):
     return await hass_store(hass, f"{uid}-appliances", data)
 
+async def appliance_store(hass: HomeAssistant, aid, data=None):
+    return await hass_store(hass, f"{aid}", data)
+
 async def hass_store(hass: HomeAssistant, key: str, data=None):
     store = Store(hass, 1, f"{DOMAIN}/{key}.json")
     if data is not None:

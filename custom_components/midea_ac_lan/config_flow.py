@@ -170,7 +170,7 @@ class BaseFlow(ConfigEntryBaseFlow):
 
         elif user_input.get('cloud_devices'):
             data = {
-                **self.hass.data[DOMAIN]["login_data"],
+                **self.hass.data[DOMAIN]['login_data'],
                 **user_input,
                 CONF_TYPE: CONF_ACCOUNT,
             }
@@ -1070,6 +1070,8 @@ class MideaLanOptionsFlowHandler(OptionsFlow, BaseFlow):
         Config flow result
 
         """
+        if 'cloud_devices' in self._config_entry.data:
+            return await self.async_step_cloud(user_input)
         if self._device_type == CONF_ACCOUNT:
             return self.async_abort(reason="account_option")
         if user_input is not None:

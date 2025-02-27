@@ -23,15 +23,17 @@ from homeassistant.const import (
     CONF_NAME,
     CONF_HOST,
     CONF_PORT,
+    CONF_PASSWORD,
     CONF_PROTOCOL,
     CONF_TOKEN,
     CONF_TYPE,
     MAJOR_VERSION,
     MINOR_VERSION,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, SupportsResponse
 from homeassistant.helpers.typing import ConfigType
-from midealocal.cloud import MideaCloud
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from midealocal.cloud import MideaCloud, get_midea_cloud
 from midealocal.device import DeviceType, MideaDevice, ProtocolVersion
 from midealocal.devices import device_selector
 
@@ -42,6 +44,7 @@ from .const import (
     CONF_MODEL,
     CONF_REFRESH_INTERVAL,
     CONF_SUBTYPE,
+    CONF_SERVER,
     DEVICES,
     DOMAIN,
     EXTRA_SWITCH,
@@ -176,6 +179,29 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:  # noqa:
         ),
     )
 
+    async def service_cloud_keys(call: Any):
+        device_id = call.data.get('device_id', 0)
+        account = call.data.get('account')
+        for entry_data in hass.data.get(DOMAIN, {}).values():
+            if not (cloud := entry_data.get('cloud')):
+                continue
+            if account and account != cloud._account:
+                continue
+            keys = await cloud.get_cloud_keys(device_id)
+            if keys:
+                return keys
+        return {
+            'msg': 'not match',
+        }
+    hass.services.async_register(
+        DOMAIN, 'cloud_keys', service_cloud_keys,
+        schema=vol.Schema({
+            vol.Required('device_id'): vol.Coerce(int),
+            vol.Optional('account'): str,
+        }),
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+
     return True
 
 
@@ -271,6 +297,18 @@ async def async_setup_cloud(hass: HomeAssistant, config_entry: ConfigEntry) -> b
     entry_data = hass.data.setdefault(DOMAIN, {}).setdefault(config_entry.entry_id, {})
     entry_devices = entry_data.setdefault(DEVICES, {})
 
+    cloud = get_midea_cloud(
+        config_entry.data[CONF_SERVER],
+        async_get_clientsession(hass),
+        config_entry.data[CONF_ACCOUNT],
+        config_entry.data[CONF_PASSWORD],
+    )
+    cloud._access_token = config_entry.data.get('access_token')
+    cloud._security._aes_key = config_entry.data.get('security_key', '0').encode()
+    if not cloud._access_token:
+        await cloud.login()
+    entry_data['cloud'] = cloud
+
     device_ids = config_entry.data.get('cloud_devices') or []
     appliances = await appliances_store(hass, config_entry.data[CONF_ACCOUNT]) or {}
     for device_id, d in appliances.items():
@@ -284,7 +322,7 @@ async def async_setup_cloud(hass: HomeAssistant, config_entry: ConfigEntry) -> b
             device_id,
             d.get(CONF_TYPE, 0xAC),
             d.get(CONF_HOST, ''),
-            d.get(CONF_PORT, 6444),
+            d.get(CONF_PORT) or 6444,
             key.get('token'),
             key.get('key'),
             ProtocolVersion.V3,

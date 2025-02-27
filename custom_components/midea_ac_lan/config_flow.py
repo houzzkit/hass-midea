@@ -122,11 +122,17 @@ class BaseFlow(ConfigEntryBaseFlow):
         cloud_servers[next(iter(default_keys))] = SKIP_LOGIN
 
         schema = {}
+        defaults = user_input or {}
+        if entry := getattr(self, '_config_entry', None):
+            defaults = {
+                **entry.data,
+                **defaults,
+            }
         if not user_input:
             """ show form """
             schema = {
-                vol.Required(CONF_ACCOUNT): str,
-                vol.Required(CONF_PASSWORD): str,
+                vol.Required(CONF_ACCOUNT, default=defaults.get(CONF_ACCOUNT, '')): str,
+                vol.Required(CONF_PASSWORD, default=defaults.get(CONF_PASSWORD, '')): str,
             }
 
         # user input data exist
@@ -157,7 +163,7 @@ class BaseFlow(ConfigEntryBaseFlow):
                     for id, d in self.appliances.items()
                 }
                 schema = {
-                    vol.Required('cloud_devices'): cv.multi_select(devices),
+                    vol.Required('cloud_devices', default=defaults.get('cloud_devices', [])): cv.multi_select(devices),
                 }
             else:
                 # return error with login failed
@@ -173,6 +179,8 @@ class BaseFlow(ConfigEntryBaseFlow):
                 **self.hass.data[DOMAIN]['login_data'],
                 **user_input,
                 CONF_TYPE: CONF_ACCOUNT,
+                'access_token': self.cloud._access_token,
+                'security_key': self.cloud._security._aes_key.decode(),
             }
             discover_devices = discover()
             for device_id, d in self.appliances.items():

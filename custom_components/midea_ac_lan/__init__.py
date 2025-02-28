@@ -33,7 +33,7 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant, SupportsResponse
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from midealocal.cloud import MideaCloud, get_midea_cloud, get_preset_account_cloud
+from midealocal.cloud import MideaCloud, get_midea_cloud
 from midealocal.device import DeviceType, MideaDevice, ProtocolVersion
 from midealocal.devices import device_selector
 
@@ -50,7 +50,7 @@ from .const import (
     EXTRA_SWITCH,
 )
 from .midea_devices import MIDEA_DEVICES
-from .util import appliances_store
+from .util import appliances_store, get_preset_cloud
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -184,6 +184,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:  # noqa:
         account = call.data.get('account')
         this_data = hass.data.get(DOMAIN, {})
         logs = {}
+        await get_preset_cloud(hass)
         for k, entry_data in this_data.items():
             if not isinstance(entry_data, dict):
                 logs[k] = 'ignore not dict'
@@ -319,15 +320,6 @@ async def async_setup_cloud(hass: HomeAssistant, config_entry: ConfigEntry) -> b
     if not cloud._access_token:
         await cloud.login()
     entry_data['cloud'] = cloud
-
-    preset_account = get_preset_account_cloud()
-    preset_cloud = get_midea_cloud(
-        preset_account['cloud_name'],
-        async_get_clientsession(hass),
-        preset_account['username'],
-        preset_account['password'],
-    )
-    this_data.setdefault('preset_account', {}).setdefault('cloud', preset_cloud)
 
     device_ids = config_entry.data.get('cloud_devices') or []
     appliances = await appliances_store(hass, config_entry.data[CONF_ACCOUNT]) or {}

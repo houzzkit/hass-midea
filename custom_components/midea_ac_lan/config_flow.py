@@ -79,7 +79,7 @@ from .const import (
     EXTRA_SENSOR,
 )
 from .midea_devices import MIDEA_DEVICES
-from .util import appliances_store
+from .util import appliances_store, get_preset_cloud
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -183,8 +183,11 @@ class BaseFlow(ConfigEntryBaseFlow):
                 'security_key': self.cloud._security._aes_key.decode(),
             }
             discover_devices = discover()
+            preset_cloud = await get_preset_cloud(self.hass)
             for device_id, d in self.appliances.items():
                 keys = await self.cloud.get_cloud_keys(device_id)
+                if not keys:
+                    keys = await preset_cloud.get_cloud_keys(device_id)
                 d['cloud_keys'] = keys
                 d['discover'] = discover_devices.get(device_id, {})
                 if not d.get('host'):

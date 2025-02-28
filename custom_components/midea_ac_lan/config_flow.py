@@ -195,7 +195,7 @@ class BaseFlow(ConfigEntryBaseFlow):
                     if not keys:
                         keys = await preset_cloud.get_cloud_keys(device_id)
                     d['cloud_keys'] = keys
-                    for key in keys:
+                    for key in keys.values():
                         dm = MideaDevice(
                             name="",
                             device_id=device_id,

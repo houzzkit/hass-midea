@@ -337,7 +337,7 @@ async def async_setup_cloud(hass: HomeAssistant, config_entry: ConfigEntry) -> b
             d.get(CONF_PORT) or 6444,
             key.get('token'),
             key.get('key'),
-            ProtocolVersion.V3,
+            d.get(CONF_PROTOCOL) or ProtocolVersion.V3,
             d.get(CONF_MODEL),
             d.get('model_number', 0),
             '' or {},

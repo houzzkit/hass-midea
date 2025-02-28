@@ -189,10 +189,10 @@ class BaseFlow(ConfigEntryBaseFlow):
                 if not keys:
                     keys = await preset_cloud.get_cloud_keys(device_id)
                 d['cloud_keys'] = keys
-                d['discover'] = discover_devices.get(device_id, {})
-                if not d.get('host'):
-                    d['host'] = d['discover'].get('ip_address')
-                    d['port'] = d['discover'].get('port')
+                d['discover'] = disc = discover_devices.get(device_id, {})
+                d['host'] = disc.get('ip_address')
+                d['port'] = disc.get('port')
+                d[CONF_PROTOCOL] = disc.get(CONF_PROTOCOL)
             await appliances_store(self.hass, data[CONF_ACCOUNT], self.appliances)
             # finish add device entry
             return self.async_create_entry(

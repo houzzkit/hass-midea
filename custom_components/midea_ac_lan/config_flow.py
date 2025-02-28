@@ -185,14 +185,41 @@ class BaseFlow(ConfigEntryBaseFlow):
             discover_devices = discover()
             preset_cloud = await get_preset_cloud(self.hass)
             for device_id, d in self.appliances.items():
-                keys = await self.cloud.get_cloud_keys(device_id)
-                if not keys:
-                    keys = await preset_cloud.get_cloud_keys(device_id)
-                d['cloud_keys'] = keys
                 d['discover'] = disc = discover_devices.get(device_id, {})
-                d['host'] = disc.get('ip_address')
-                d['port'] = disc.get('port')
-                d[CONF_PROTOCOL] = disc.get(CONF_PROTOCOL)
+                d['host'] = disc.get(CONF_IP_ADDRESS)
+                d[CONF_PORT] = disc.get(CONF_PORT)
+                d[CONF_PROTOCOL] = protocol = disc.get(CONF_PROTOCOL)
+                if protocol == ProtocolVersion.V3:
+                    keys = await self.cloud.get_cloud_keys(device_id)
+                    if not keys:
+                        keys = await preset_cloud.get_cloud_keys(device_id)
+                    d['cloud_keys'] = keys
+                    for key in keys:
+                        dm = MideaDevice(
+                            name="",
+                            device_id=device_id,
+                            device_type=d.get(CONF_TYPE),
+                            ip_address=d.get('host'),
+                            port=d.get(CONF_PORT),
+                            token=key['token'],
+                            key=key['key'],
+                            device_protocol=protocol,
+                            model=d.get(CONF_MODEL),
+                            subtype=0,
+                            attributes={},
+                        )
+                        if dm.connect():
+                            try:
+                                dm.authenticate()
+                            except AuthException:
+                                _LOGGER.debug("Unable to authenticate.")
+                                dm.close_socket()
+                            except SocketException:
+                                _LOGGER.debug("Socket closed.")
+                            else:
+                                dm.close_socket()
+                                d['cloud_keys'] = {1: key}
+                                break
             await appliances_store(self.hass, data[CONF_ACCOUNT], self.appliances)
             # finish add device entry
             return self.async_create_entry(

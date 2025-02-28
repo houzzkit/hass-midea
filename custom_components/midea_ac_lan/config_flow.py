@@ -184,6 +184,7 @@ class BaseFlow(ConfigEntryBaseFlow):
             }
             discover_devices = discover()
             preset_cloud = await get_preset_cloud(self.hass)
+            await preset_cloud.login()
             for device_id, d in self.appliances.items():
                 d['discover'] = disc = discover_devices.get(device_id, {})
                 d['host'] = disc.get(CONF_IP_ADDRESS)

@@ -17,7 +17,7 @@
         "description": "选择添加设备的方式",
         "title": "添加新设备"
       },
-      "cloud": {
+      "account": {
         "data": {
           "account": "账号",
           "password": "密码",
@@ -674,10 +674,23 @@
           "switches": "扩展控制",
           "customize": "自定义"
         },
-        "title": "配置"
+        "title": "配置",
+        "menu_options": {
+            "account": "配置美的美居账号",
+            "customize": "配置已添加的设备"
+        },
+        "customize": {
+          "customize_device_id": "配置设备",
+          "ip_address": "IP地址",
+          "refresh_interval": "刷新间隔(设0为不进行主动刷新)",
+          "sensors": "扩展传感器",
+          "switches": "扩展控制",
+          "customize": "自定义"
+        }
       }
     },
     "abort": {
+      "config_saved": "配置已保存！",
       "account_option": "账户配置不支持此操作.\n点击\"添加设备\"完成添加新设备的操作"
     }
   },

@@ -27,7 +27,8 @@ async def async_setup_entry(
     sensors = []
     entry_data = hass.data[DOMAIN].get(config_entry.entry_id, {})
     for device_id, device in entry_data.get(DEVICES, {}).items():
-        extra_sensors = config_entry.options.get(CONF_SENSORS, [])
+        customize = config_entry.options.get(device_id) or {}
+        extra_sensors = customize.get(CONF_SENSORS, []) or config_entry.options.get(CONF_SENSORS, [])
         for entity_key, config in cast(
             "dict",
             MIDEA_DEVICES[device.device_type]["entities"],

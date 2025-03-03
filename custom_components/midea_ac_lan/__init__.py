@@ -326,6 +326,7 @@ async def async_setup_cloud(hass: HomeAssistant, config_entry: ConfigEntry) -> b
     for device_id, d in appliances.items():
         if device_id not in device_ids:
             continue
+        customize = config_entry.options.get(device_id) or {}
         keys = d.get('cloud_keys') or await MideaCloud.get_default_keys()
         key = next(iter(keys.values()))
         device = await hass.async_add_import_executor_job(
@@ -333,7 +334,7 @@ async def async_setup_cloud(hass: HomeAssistant, config_entry: ConfigEntry) -> b
             d.get(CONF_NAME, 'Meiju'),
             device_id,
             d.get(CONF_TYPE, 0xAC),
-            d.get(CONF_HOST, ''),
+            customize.get(CONF_HOST) or d.get(CONF_HOST, ''),
             d.get(CONF_PORT) or 6444,
             key.get('token'),
             key.get('key'),
@@ -345,6 +346,8 @@ async def async_setup_cloud(hass: HomeAssistant, config_entry: ConfigEntry) -> b
         if not device:
             _LOGGER.warning("Failed to setup device: %s", d)
             continue
+        if (refresh_interval := customize.get(CONF_REFRESH_INTERVAL)) is not None:
+            device.set_refresh_interval(refresh_interval)
         device.open()
         entry_devices[device_id] = device
         _LOGGER.info("Setup device: %s", d)

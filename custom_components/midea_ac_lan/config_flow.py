@@ -84,7 +84,7 @@ from .util import appliances_store, get_preset_cloud
 _LOGGER = logging.getLogger(__name__)
 
 ADD_WAY = {
-    "cloud": "通过[美的美居]账号集成",
+    "account": "通过[美的美居]账号集成",
     "discovery": "Discover automatically",
     "manually": "Configure manually",
     "list": "List all appliances only",
@@ -111,7 +111,7 @@ class BaseFlow(ConfigEntryBaseFlow):
     ).decode("ASCII")
     appliances: dict | None = None
 
-    async def async_step_cloud(
+    async def async_step_account(
         self,
         user_input: dict[str, Any] | None = None,
         error: str | None = None,
@@ -174,7 +174,7 @@ class BaseFlow(ConfigEntryBaseFlow):
                     cloud_server,
                 )
 
-        elif user_input.get('cloud_devices'):
+        elif cloud_devices := user_input.get('cloud_devices'):
             data = {
                 **self.hass.data[DOMAIN]['login_data'],
                 **user_input,
@@ -190,7 +190,9 @@ class BaseFlow(ConfigEntryBaseFlow):
                 d['host'] = disc.get(CONF_IP_ADDRESS)
                 d[CONF_PORT] = disc.get(CONF_PORT)
                 d[CONF_PROTOCOL] = protocol = disc.get(CONF_PROTOCOL)
-                if protocol == ProtocolVersion.V3:
+                if str(device_id) not in cloud_devices:
+                    """ not selected """
+                elif protocol == ProtocolVersion.V3:
                     keys = await self.cloud.get_cloud_keys(device_id)
                     if not keys:
                         keys = await preset_cloud.get_cloud_keys(device_id)
@@ -222,6 +224,9 @@ class BaseFlow(ConfigEntryBaseFlow):
                                 d['cloud_keys'] = {1: key}
                                 break
             await appliances_store(self.hass, data[CONF_ACCOUNT], self.appliances)
+            if entry:
+                self.hass.config_entries.async_update_entry(entry, data=data)
+                return self.async_create_entry(title='', data={})
             # finish add device entry
             return self.async_create_entry(
                 title=f"{data[CONF_ACCOUNT]}",
@@ -230,9 +235,9 @@ class BaseFlow(ConfigEntryBaseFlow):
 
         # user not login, show login form in UI
         return self.async_show_form(
-            step_id="cloud",
+            step_id='account',
             data_schema=vol.Schema(schema),
-            errors={"base": error} if error else None,
+            errors={'base': error} if error else None,
         )
 
     async def _check_cloud_login(
@@ -432,8 +437,8 @@ class MideaLanConfigFlow(ConfigFlow, BaseFlow, domain=DOMAIN):  # type: ignore[c
         """
         # user select a device discovery mode
         if user_input is not None:
-            if user_input["action"] == "cloud":
-                return await self.async_step_cloud()
+            if user_input["action"] == "account":
+                return await self.async_step_account()
 
             # default is auto discovery mode
             if user_input["action"] == "discovery":
@@ -1110,7 +1115,9 @@ class MideaLanOptionsFlowHandler(OptionsFlow, BaseFlow):
 
         """
         if 'cloud_devices' in self._config_entry.data:
-            return await self.async_step_cloud(user_input)
+            """ 通过账号集成 """
+            return self.async_show_menu(step_id='init', menu_options=['account', 'customize'])
+
         if self._device_type == CONF_ACCOUNT:
             return self.async_abort(reason="account_option")
         if user_input is not None:
@@ -1176,3 +1183,72 @@ class MideaLanOptionsFlowHandler(OptionsFlow, BaseFlow):
         )
 
         return self.async_show_form(step_id="init", data_schema=data_schema)
+
+    async def async_step_customize(self, user_input=None):
+        """ 配置设备 """
+        entry = self._config_entry
+        schema = {}
+        if not user_input:
+            """ 选择要配置的设备 """
+            device_ids = entry.data.get('cloud_devices') or []
+            appliances = await appliances_store(self.hass, entry.data[CONF_ACCOUNT]) or {}
+            schema.update({
+                vol.Required('customize_device_id', default=''): vol.In({
+                    id: f"{d['name']} ({d['model']})"
+                    for id, d in appliances.items()
+                    if str(id) in device_ids
+                }),
+            })
+
+        elif device_id := user_input.get('customize_device_id'):
+            self.context['customize_device_id'] = device_id
+            appliances = await appliances_store(self.hass, entry.data[CONF_ACCOUNT]) or {}
+            appliance = appliances.get(device_id) or {}
+            options = dict(entry.options or {}).setdefault(device_id, {})
+            host = options.get(CONF_IP_ADDRESS) or appliance.get('host') or ''
+            schema.update({
+                vol.Required(CONF_IP_ADDRESS, default=host): str,
+                vol.Required(CONF_REFRESH_INTERVAL, default=options.get(CONF_REFRESH_INTERVAL, 30)): int,
+            })
+            sensors = {}
+            switches = {}
+            device_type = cast('int', appliance.get(CONF_TYPE) or 0xAC)
+            for attribute, attribute_config in cast(
+                'dict',
+                MIDEA_DEVICES.get(device_type, {}).get('entities', {}),
+            ).items():
+                attribute_name = (
+                    attribute if isinstance(attribute, str) else attribute.value
+                )
+                if attribute_config.get("type") in EXTRA_SENSOR:
+                    sensors[attribute_name] = attribute_config.get("name")
+                elif attribute_config.get(
+                    "type",
+                ) in EXTRA_CONTROL and not attribute_config.get("default"):
+                    switches[attribute_name] = attribute_config.get("name")
+            extra_sensors = list(
+                set(sensors.keys()) & set(options.get(CONF_SENSORS, [])),
+            )
+            extra_switches = list(
+                set(switches.keys()) & set(options.get(CONF_SWITCHES, [])),
+            )
+            if sensors:
+                schema.update({
+                    vol.Required(CONF_SENSORS, default=extra_sensors): cv.multi_select(sensors),
+                })
+            if switches:
+                schema.update({
+                    vol.Required(CONF_SWITCHES, default=extra_switches): cv.multi_select(switches),
+                })
+
+        elif device_id := self.context.pop('customize_device_id'):
+            options = dict(entry.options or {})
+            options[device_id] = user_input
+            _LOGGER.info('customize_device: %s', [device_id, user_input, options])
+            self.hass.config_entries.async_update_entry(entry, options=options)
+            return self.async_abort(reason='config_saved')
+
+        return self.async_show_form(
+            step_id='customize',
+            data_schema=vol.Schema(schema),
+        )

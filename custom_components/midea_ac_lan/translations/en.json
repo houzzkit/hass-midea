@@ -17,7 +17,7 @@
         "description": "Choose the way to add a appliance",
         "title": "Add new appliance"
       },
-      "cloud": {
+      "account": {
         "data": {
           "account": "Account",
           "password": "Password",
@@ -673,10 +673,23 @@
           "switches": "Extra controls",
           "customize": "Customize"
         },
-        "title": "Configure"
+        "title": "Configure",
+        "menu_options": {
+            "account": "Config account",
+            "customize": "Customize devices"
+        },
+        "customize": {
+          "customize_device_id": "Customize Device",
+          "ip_address": "IP address",
+          "refresh_interval": "Refresh interval (0 means not refreshing actively)",
+          "sensors": "Extra sensors",
+          "switches": "Extra controls",
+          "customize": "Customize"
+        }
       }
     },
     "abort": {
+      "config_saved": "Configuration saved!",
       "account_option": "The account does not supports this operation.\nClick \"ADD DEVICE\" to  add a new device."
     }
   },

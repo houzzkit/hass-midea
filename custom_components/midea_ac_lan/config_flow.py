@@ -192,7 +192,6 @@ class BaseFlow(ConfigEntryBaseFlow):
             }
             options = {**entry.options} if entry else {}
             discover_devices = discover()
-            preset_cloud = await get_preset_cloud(self.hass, login=True)
             for device_id, d in self.appliances.items():
                 d['discover'] = disc = discover_devices.get(device_id, {})
                 d['host'] = host = disc.get(CONF_IP_ADDRESS, '')
@@ -204,21 +203,14 @@ class BaseFlow(ConfigEntryBaseFlow):
                 if str(device_id) not in cloud_devices:
                     """ not selected """
                     options.pop(device_id, None)
-                elif protocol == ProtocolVersion.V3:
-                    keys = await self.cloud.get_cloud_keys(int(device_id))
-                    if not keys:
-                        keys = await preset_cloud.get_cloud_keys(int(device_id))
-                    d['cloud_keys'] = keys
-                    for key in keys.values():
-                        if await self._check_local_error(int(device_id), **{**d, **key}):
-                            continue
-                        d['cloud_keys'] = {1: key}
-                        customize.update(key)
-                        break
+                elif protocol != ProtocolVersion.V3:
+                    """ ignore """
+                elif key := await self.get_cloud_token(device_id, **d):
+                    customize.update(key)
             await appliances_store(self.hass, data[CONF_ACCOUNT], self.appliances)
             if entry:
                 self.hass.config_entries.async_update_entry(entry, data=data)
-                return self.async_create_entry(title='', data={})
+                return self.async_create_entry(title='', data=options)
             # finish add device entry
             return self.async_create_entry(
                 title=f"{data[CONF_ACCOUNT]}",
@@ -231,6 +223,23 @@ class BaseFlow(ConfigEntryBaseFlow):
             data_schema=vol.Schema(schema),
             errors={'base': error} if error else None,
         )
+
+    async def get_cloud_token(self, device_id, entry_cloud=None, **kwargs):
+        appliance_id = int(device_id)
+        preset_cloud = await get_preset_cloud(self.hass, login=True)
+        clouds = [preset_cloud]
+        if entry_cloud:
+            clouds.append(entry_cloud)
+        for cloud in clouds:
+            keys = await cloud.get_cloud_keys(appliance_id)
+            if cloud == entry_cloud:
+                keys.update(await MideaCloud.get_default_keys())
+            for key in keys.values():
+                if err := await self._check_local_error(appliance_id, **kwargs):
+                    _LOGGER.warning('Connect device fail: %s', [appliance_id, cloud._account, key, err])
+                    continue
+                return key
+        return {}
 
     async def _check_local_error(self, device_id, **kwargs):
         dm = MideaDevice(
@@ -1275,29 +1284,16 @@ class MideaLanOptionsFlowHandler(OptionsFlow, BaseFlow):
 
         elif device_id := self.context.pop('customize_device_id', None):
             _LOGGER.debug(f"Customize device user input: %s", user_input)
+            suggested_values.update(user_input)
             protocol = user_input.get(CONF_PROTOCOL) or ProtocolVersion.V3
             if protocol == ProtocolVersion.V3:
                 appliances = await appliances_store(self.hass, entry.data[CONF_ACCOUNT]) or {}
                 appliance = appliances.get(device_id) or {}
-                appliance_id = int(device_id)
                 if user_input.get(CONF_TOKEN) and user_input.get(CONF_KEY):
                     _LOGGER.info('Force token/key: %s', user_input)
+                elif key := await self.get_cloud_token(device_id, **appliance):
+                    user_input.update(key)
                 else:
-                    entry_cloud = await get_entry_cloud(self.hass, entry)
-                    preset_cloud = await get_preset_cloud(self.hass, login=True)
-                    for cloud in [preset_cloud, entry_cloud]:
-                        keys = await cloud.get_cloud_keys(appliance_id)
-                        if cloud == entry_cloud:
-                            keys.update(await MideaCloud.get_default_keys())
-                        for key in keys.values():
-                            if err := await self._check_local_error(appliance_id, **{**appliance, **key}):
-                                _LOGGER.warning('Connect fail: %s', [appliance_id, cloud._account, key, err])
-                                continue
-                            user_input.update({
-                                CONF_TOKEN: key[CONF_TOKEN],
-                                CONF_KEY: key[CONF_KEY],
-                            })
-                if not user_input.get(CONF_TOKEN):
                     self.tip = '获取令牌及密钥失败，请重试或手动获取'
                     user_input['customize_device_id'] = device_id
                     return await self.async_step_customize(user_input)

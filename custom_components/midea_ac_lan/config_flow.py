@@ -234,14 +234,14 @@ class BaseFlow(ConfigEntryBaseFlow):
 
     async def _check_local_error(self, device_id, **kwargs):
         dm = MideaDevice(
-            name="",
+            name='Checker',
             device_id=int(device_id),
             device_type=kwargs.get(CONF_TYPE, 0xAC),
-            ip_address=kwargs.get('host'),
+            ip_address=kwargs.get(CONF_IP_ADDRESS) or kwargs.get('host'),
             port=kwargs.get(CONF_PORT),
             token=kwargs.get(CONF_TOKEN),
             key=kwargs.get(CONF_KEY),
-            device_protocol=kwargs.get('protocol', ProtocolVersion.V2),
+            device_protocol=kwargs.get(CONF_PROTOCOL, ProtocolVersion.V2),
             model=kwargs.get(CONF_MODEL),
             subtype=0,
             attributes={},
@@ -1275,12 +1275,13 @@ class MideaLanOptionsFlowHandler(OptionsFlow, BaseFlow):
                 entry_cloud = await get_entry_cloud(self.hass, entry)
                 preset_cloud = await get_preset_cloud(self.hass, login=True)
                 if not user_input.get(CONF_TOKEN) or not user_input.get(CONF_KEY):
-                    for cloud in [entry_cloud, preset_cloud]:
+                    for cloud in [preset_cloud, entry_cloud]:
                         keys = await cloud.get_cloud_keys(appliance_id)
-                        keys.update(await MideaCloud.get_default_keys())
+                        if cloud == entry_cloud:
+                            keys.update(await MideaCloud.get_default_keys())
                         for key in keys.values():
-                            if self._check_local_error(appliance_id, **{**appliance, **key}):
-                                _LOGGER.warning('Connect device fail: %s', [appliance_id, cloud._account, key])
+                            if err := self._check_local_error(appliance_id, **{**appliance, **key}):
+                                _LOGGER.warning('Connect fail: %s', [appliance_id, cloud._account, key, err])
                                 continue
                             user_input.update({
                                 CONF_TOKEN: key[CONF_TOKEN],

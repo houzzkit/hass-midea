@@ -11,6 +11,7 @@ integration load process:
 
 import logging
 from typing import Any, cast
+from functools import partial
 
 import homeassistant.helpers.config_validation as cv
 import homeassistant.helpers.device_registry as dr
@@ -316,28 +317,28 @@ async def async_setup_cloud(hass: HomeAssistant, config_entry: ConfigEntry) -> b
         if device_id not in device_ids:
             continue
         customize = config_entry.options.get(device_id) or {}
-        device = await hass.async_add_import_executor_job(
-            device_selector,
-            d.get(CONF_NAME, 'Meiju'),
-            device_id,
-            d.get(CONF_TYPE, 0xAC),
-            customize.get(CONF_IP_ADDRESS) or d.get(CONF_HOST, ''),
-            d.get(CONF_PORT) or 6444,
-            customize.get('token', ''),
-            customize.get('key', '00'),
-            customize.get(CONF_PROTOCOL) or ProtocolVersion.V3,
-            d.get(CONF_MODEL),
-            d.get('model_number', 0),
-            '' or {},
-        )
+        device_info = {
+            'name': d.get(CONF_NAME, 'Meiju'),
+            'device_id': int(device_id),
+            'device_type': d.get(CONF_TYPE, 0xAC),
+            'ip_address': customize.get(CONF_IP_ADDRESS) or d.get(CONF_HOST, ''),
+            'port': d.get(CONF_PORT) or 6444,
+            'token': customize.get('token', ''),
+            'key': customize.get('key', '00'),
+            'device_protocol': customize.get(CONF_PROTOCOL) or ProtocolVersion.V3,
+            'model': d.get(CONF_MODEL, ''),
+            'subtype': d.get('model_number', 0),
+            'customize': {},
+        }
+        device = await hass.async_add_import_executor_job(partial(device_selector, **device_info))
         if not device:
-            _LOGGER.warning("Failed to setup device: %s", [d, customize])
+            _LOGGER.warning("Failed to setup device: %s", device_info)
             continue
         if (refresh_interval := customize.get(CONF_REFRESH_INTERVAL)) is not None:
             device.set_refresh_interval(refresh_interval)
         device.open()
         entry_devices[device_id] = device
-        _LOGGER.info("Setup device: %s", d)
+        _LOGGER.info("Setup device: %s", device_info)
     await hass.config_entries.async_forward_entry_setups(config_entry, ALL_PLATFORM)
     return True
 

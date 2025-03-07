@@ -258,8 +258,9 @@ class BaseFlow(ConfigEntryBaseFlow):
                 return exc
             else:
                 dm.close_socket()
-        _LOGGER.info('Device authenticate success: %s', [device_id, kwargs])
-        return None
+                _LOGGER.info('Device authenticate success: %s', [device_id, kwargs])
+                return None
+        return ValueError('Connect Fail')
 
     async def _check_cloud_login(
         self,
@@ -1302,9 +1303,8 @@ class MideaLanOptionsFlowHandler(OptionsFlow, BaseFlow):
                     return await self.async_step_customize(user_input)
             options = dict(entry.options or {})
             options[device_id] = user_input
-            _LOGGER.info('Customize device update: %s', [device_id, user_input, options])
-            self.hass.config_entries.async_update_entry(entry, options=options)
-            return self.async_abort(reason='config_saved')
+            _LOGGER.info('Customize device update: %s', [device_id, user_input])
+            return self.async_create_entry(title='', data=options)
 
         return self.async_show_form(
             step_id='customize',

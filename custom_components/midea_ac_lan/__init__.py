@@ -24,7 +24,6 @@ from homeassistant.const import (
     CONF_NAME,
     CONF_HOST,
     CONF_PORT,
-    CONF_PASSWORD,
     CONF_PROTOCOL,
     CONF_TOKEN,
     CONF_TYPE,
@@ -33,8 +32,6 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant, SupportsResponse
 from homeassistant.helpers.typing import ConfigType
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from midealocal.cloud import MideaCloud, get_midea_cloud
 from midealocal.device import DeviceType, MideaDevice, ProtocolVersion
 from midealocal.devices import device_selector
 
@@ -351,6 +348,12 @@ async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> 
     True if entry is unloaded.
 
     """
+    this_data = hass.data.setdefault(DOMAIN, {})
+    entry_data = this_data.setdefault(config_entry.entry_id, {})
+    entry_devices = entry_data.pop(DEVICES, {})
+    for device_id, device in entry_devices.items():
+        device.close_socket()
+
     device_type = config_entry.data.get(CONF_TYPE)
     if device_type == CONF_ACCOUNT:
         return True

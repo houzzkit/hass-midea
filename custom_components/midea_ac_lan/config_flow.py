@@ -205,12 +205,12 @@ class BaseFlow(ConfigEntryBaseFlow):
                     """ not selected """
                     options.pop(device_id, None)
                 elif protocol == ProtocolVersion.V3:
-                    keys = await self.cloud.get_cloud_keys(device_id)
+                    keys = await self.cloud.get_cloud_keys(int(device_id))
                     if not keys:
-                        keys = await preset_cloud.get_cloud_keys(device_id)
+                        keys = await preset_cloud.get_cloud_keys(int(device_id))
                     d['cloud_keys'] = keys
                     for key in keys.values():
-                        if self._check_local_error(device_id, **{**d, **key}):
+                        if self._check_local_error(int(device_id), **{**d, **key}):
                             continue
                         d['cloud_keys'] = {1: key}
                         customize.update(key)
@@ -235,8 +235,8 @@ class BaseFlow(ConfigEntryBaseFlow):
     async def _check_local_error(self, device_id, **kwargs):
         dm = MideaDevice(
             name="",
-            device_id=device_id,
-            device_type=kwargs.get(CONF_TYPE),
+            device_id=int(device_id),
+            device_type=kwargs.get(CONF_TYPE, 0xAC),
             ip_address=kwargs.get('host'),
             port=kwargs.get(CONF_PORT),
             token=kwargs.get(CONF_TOKEN),
@@ -250,11 +250,11 @@ class BaseFlow(ConfigEntryBaseFlow):
             try:
                 dm.authenticate()
             except AuthException as exc:
-                _LOGGER.debug("Unable to authenticate.")
+                _LOGGER.warning("Unable to authenticate: %s", [device_id, kwargs], exc_info=True)
                 dm.close_socket()
                 return exc
             except SocketException as exc:
-                _LOGGER.debug("Socket closed.")
+                _LOGGER.warning("Socket closed: %s", [device_id, kwargs], exc_info=True)
                 return exc
             else:
                 dm.close_socket()
@@ -1280,7 +1280,7 @@ class MideaLanOptionsFlowHandler(OptionsFlow, BaseFlow):
                         keys.update(await MideaCloud.get_default_keys())
                         for key in keys.values():
                             if self._check_local_error(appliance_id, **{**appliance, **key}):
-                                _LOGGER.warning('Connect device fail: %s', [appliance_id, key])
+                                _LOGGER.warning('Connect device fail: %s', [appliance_id, cloud._account, key])
                                 continue
                             user_input.update({
                                 CONF_TOKEN: key[CONF_TOKEN],

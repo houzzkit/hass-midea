@@ -198,12 +198,15 @@ class BaseFlow(ConfigEntryBaseFlow):
                 d[CONF_PORT] = disc.get(CONF_PORT)
                 d[CONF_PROTOCOL] = protocol = disc.get(CONF_PROTOCOL)
                 customize = options.setdefault(device_id, {})
-                customize[CONF_IP_ADDRESS] = host
-                customize[CONF_PROTOCOL] = protocol
+                if host:
+                    customize[CONF_IP_ADDRESS] = host
+                    customize[CONF_PROTOCOL] = protocol
                 if str(device_id) not in cloud_devices:
                     """ not selected """
                     options.pop(device_id, None)
                 elif protocol != ProtocolVersion.V3:
+                    """ ignore """
+                elif customize.get(CONF_TOKEN):
                     """ ignore """
                 elif key := await self.get_cloud_token(device_id, **d):
                     customize.update(key)

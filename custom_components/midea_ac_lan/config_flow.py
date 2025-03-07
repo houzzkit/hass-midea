@@ -1209,6 +1209,7 @@ class MideaLanOptionsFlowHandler(OptionsFlow, BaseFlow):
         """ 配置设备 """
         entry = self._config_entry
         schema = {}
+        suggested_values = user_input or {}
         if not user_input:
             """ 选择要配置的设备 """
             device_ids = entry.data.get('cloud_devices') or []
@@ -1226,15 +1227,19 @@ class MideaLanOptionsFlowHandler(OptionsFlow, BaseFlow):
             appliances = await appliances_store(self.hass, entry.data[CONF_ACCOUNT]) or {}
             appliance = appliances.get(device_id) or {}
             options = dict(entry.options or {}).setdefault(device_id, {})
-            options.update(user_input)
-            host = options.get(CONF_IP_ADDRESS) or appliance.get('host') or ''
-            protocol = options.get(CONF_PROTOCOL) or appliance.get(CONF_PROTOCOL) or ProtocolVersion.V3
+            suggested_values = {
+                CONF_IP_ADDRESS: appliance.get('host') or '',
+                CONF_REFRESH_INTERVAL: 30,
+                CONF_PROTOCOL: appliance.get(CONF_PROTOCOL) or ProtocolVersion.V3,
+                **options,
+                **user_input,
+            }
             schema.update({
-                vol.Required(CONF_IP_ADDRESS, default=host): str,
-                vol.Required(CONF_REFRESH_INTERVAL, default=options.get(CONF_REFRESH_INTERVAL, 30)): int,
-                vol.Required(CONF_PROTOCOL, default=protocol): vol.In(ProtocolVersion),
-                vol.Optional(CONF_TOKEN, default=options.get(CONF_TOKEN, '')): str,
-                vol.Optional(CONF_KEY, default=options.get(CONF_KEY, '')): str,
+                vol.Required(CONF_IP_ADDRESS): str,
+                vol.Required(CONF_REFRESH_INTERVAL): int,
+                vol.Required(CONF_PROTOCOL): vol.In(ProtocolVersion),
+                vol.Optional(CONF_TOKEN): str,
+                vol.Optional(CONF_KEY): str,
             })
             sensors = {}
             switches = {}
@@ -1274,11 +1279,11 @@ class MideaLanOptionsFlowHandler(OptionsFlow, BaseFlow):
                 appliances = await appliances_store(self.hass, entry.data[CONF_ACCOUNT]) or {}
                 appliance = appliances.get(device_id) or {}
                 appliance_id = int(device_id)
-                entry_cloud = await get_entry_cloud(self.hass, entry)
-                preset_cloud = await get_preset_cloud(self.hass, login=True)
                 if user_input.get(CONF_TOKEN) and user_input.get(CONF_KEY):
                     _LOGGER.info('Force token/key: %s', user_input)
                 else:
+                    entry_cloud = await get_entry_cloud(self.hass, entry)
+                    preset_cloud = await get_preset_cloud(self.hass, login=True)
                     for cloud in [preset_cloud, entry_cloud]:
                         keys = await cloud.get_cloud_keys(appliance_id)
                         if cloud == entry_cloud:
@@ -1303,6 +1308,9 @@ class MideaLanOptionsFlowHandler(OptionsFlow, BaseFlow):
 
         return self.async_show_form(
             step_id='customize',
-            data_schema=vol.Schema(schema),
+            data_schema=self.add_suggested_values_to_schema(
+                data_schema=vol.Schema(schema),
+                suggested_values=suggested_values,
+            ),
             description_placeholders={'tip': self.tip},
         )

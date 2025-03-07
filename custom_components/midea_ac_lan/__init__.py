@@ -336,9 +336,13 @@ async def async_setup_cloud(hass: HomeAssistant, config_entry: ConfigEntry) -> b
         device.open()
         entry_devices[device_id] = device
         _LOGGER.info("Setup device: %s", device_info)
+
     await hass.config_entries.async_forward_entry_setups(config_entry, ALL_PLATFORM)
+    config_entry.async_on_unload(config_entry.add_update_listener(async_reload_entry))
     return True
 
+async def async_reload_entry(hass: HomeAssistant, config_entry: ConfigEntry):
+    await hass.config_entries.async_reload(config_entry.entry_id)
 
 async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Clean up entities, unsubscribe event listener and close all connections.

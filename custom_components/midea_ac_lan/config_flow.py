@@ -210,7 +210,7 @@ class BaseFlow(ConfigEntryBaseFlow):
                         keys = await preset_cloud.get_cloud_keys(int(device_id))
                     d['cloud_keys'] = keys
                     for key in keys.values():
-                        if self._check_local_error(int(device_id), **{**d, **key}):
+                        if await self._check_local_error(int(device_id), **{**d, **key}):
                             continue
                         d['cloud_keys'] = {1: key}
                         customize.update(key)
@@ -1289,7 +1289,7 @@ class MideaLanOptionsFlowHandler(OptionsFlow, BaseFlow):
                         if cloud == entry_cloud:
                             keys.update(await MideaCloud.get_default_keys())
                         for key in keys.values():
-                            if err := self._check_local_error(appliance_id, **{**appliance, **key}):
+                            if err := await self._check_local_error(appliance_id, **{**appliance, **key}):
                                 _LOGGER.warning('Connect fail: %s', [appliance_id, cloud._account, key, err])
                                 continue
                             user_input.update({

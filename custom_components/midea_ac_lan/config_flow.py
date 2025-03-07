@@ -79,7 +79,7 @@ from .const import (
     EXTRA_SENSOR,
 )
 from .midea_devices import MIDEA_DEVICES
-from .util import appliances_store, get_preset_cloud
+from .util import appliances_store, get_entry_cloud, get_preset_cloud
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -110,6 +110,14 @@ class BaseFlow(ConfigEntryBaseFlow):
         format((PRESET_ACCOUNT_DATA[0] ^ PRESET_ACCOUNT_DATA[2]), "X"),
     ).decode("ASCII")
     appliances: dict | None = None
+
+    @property
+    def tip(self):
+        return self.context.pop('tip', '')
+
+    @tip.setter
+    def tip(self, value):
+        self.context['tip'] = value
 
     async def async_step_account(
         self,
@@ -182,47 +190,31 @@ class BaseFlow(ConfigEntryBaseFlow):
                 'access_token': self.cloud._access_token,
                 'security_key': self.cloud._security._aes_key.decode(),
             }
+            options = {**entry.options} if entry else {}
             discover_devices = discover()
-            preset_cloud = await get_preset_cloud(self.hass)
-            await preset_cloud.login()
+            preset_cloud = await get_preset_cloud(self.hass, login=True)
             for device_id, d in self.appliances.items():
                 d['discover'] = disc = discover_devices.get(device_id, {})
-                d['host'] = disc.get(CONF_IP_ADDRESS)
+                d['host'] = host = disc.get(CONF_IP_ADDRESS, '')
                 d[CONF_PORT] = disc.get(CONF_PORT)
                 d[CONF_PROTOCOL] = protocol = disc.get(CONF_PROTOCOL)
+                customize = options.setdefault(device_id, {})
+                customize[CONF_IP_ADDRESS] = host
+                customize[CONF_PROTOCOL] = protocol
                 if str(device_id) not in cloud_devices:
                     """ not selected """
+                    options.pop(device_id, None)
                 elif protocol == ProtocolVersion.V3:
                     keys = await self.cloud.get_cloud_keys(device_id)
                     if not keys:
                         keys = await preset_cloud.get_cloud_keys(device_id)
                     d['cloud_keys'] = keys
                     for key in keys.values():
-                        dm = MideaDevice(
-                            name="",
-                            device_id=device_id,
-                            device_type=d.get(CONF_TYPE),
-                            ip_address=d.get('host'),
-                            port=d.get(CONF_PORT),
-                            token=key['token'],
-                            key=key['key'],
-                            device_protocol=protocol,
-                            model=d.get(CONF_MODEL),
-                            subtype=0,
-                            attributes={},
-                        )
-                        if dm.connect():
-                            try:
-                                dm.authenticate()
-                            except AuthException:
-                                _LOGGER.debug("Unable to authenticate.")
-                                dm.close_socket()
-                            except SocketException:
-                                _LOGGER.debug("Socket closed.")
-                            else:
-                                dm.close_socket()
-                                d['cloud_keys'] = {1: key}
-                                break
+                        if self._check_local_error(device_id, **{**d, **key}):
+                            continue
+                        d['cloud_keys'] = {1: key}
+                        customize.update(key)
+                        break
             await appliances_store(self.hass, data[CONF_ACCOUNT], self.appliances)
             if entry:
                 self.hass.config_entries.async_update_entry(entry, data=data)
@@ -239,6 +231,34 @@ class BaseFlow(ConfigEntryBaseFlow):
             data_schema=vol.Schema(schema),
             errors={'base': error} if error else None,
         )
+
+    async def _check_local_error(self, device_id, **kwargs):
+        dm = MideaDevice(
+            name="",
+            device_id=device_id,
+            device_type=kwargs.get(CONF_TYPE),
+            ip_address=kwargs.get('host'),
+            port=kwargs.get(CONF_PORT),
+            token=kwargs.get(CONF_TOKEN),
+            key=kwargs.get(CONF_KEY),
+            device_protocol=kwargs.get('protocol', ProtocolVersion.V2),
+            model=kwargs.get(CONF_MODEL),
+            subtype=0,
+            attributes={},
+        )
+        if dm.connect():
+            try:
+                dm.authenticate()
+            except AuthException as exc:
+                _LOGGER.debug("Unable to authenticate.")
+                dm.close_socket()
+                return exc
+            except SocketException as exc:
+                _LOGGER.debug("Socket closed.")
+                return exc
+            else:
+                dm.close_socket()
+        return None
 
     async def _check_cloud_login(
         self,
@@ -1200,15 +1220,20 @@ class MideaLanOptionsFlowHandler(OptionsFlow, BaseFlow):
                 }),
             })
 
-        elif device_id := user_input.get('customize_device_id'):
+        elif device_id := user_input.pop('customize_device_id', None):
             self.context['customize_device_id'] = device_id
             appliances = await appliances_store(self.hass, entry.data[CONF_ACCOUNT]) or {}
             appliance = appliances.get(device_id) or {}
             options = dict(entry.options or {}).setdefault(device_id, {})
+            options.update(user_input)
             host = options.get(CONF_IP_ADDRESS) or appliance.get('host') or ''
+            protocol = options.get(CONF_PROTOCOL) or appliance.get(CONF_PROTOCOL) or ProtocolVersion.V3
             schema.update({
                 vol.Required(CONF_IP_ADDRESS, default=host): str,
                 vol.Required(CONF_REFRESH_INTERVAL, default=options.get(CONF_REFRESH_INTERVAL, 30)): int,
+                vol.Required(CONF_PROTOCOL, default=protocol): vol.In(ProtocolVersion),
+                vol.Optional(CONF_TOKEN, default=options.get(CONF_TOKEN, '')): str,
+                vol.Optional(CONF_KEY, default=options.get(CONF_KEY, '')): str,
             })
             sensors = {}
             switches = {}
@@ -1241,7 +1266,30 @@ class MideaLanOptionsFlowHandler(OptionsFlow, BaseFlow):
                     vol.Required(CONF_SWITCHES, default=extra_switches): cv.multi_select(switches),
                 })
 
-        elif device_id := self.context.pop('customize_device_id'):
+        elif device_id := self.context.pop('customize_device_id', None):
+            protocol = user_input.get(CONF_PROTOCOL) or ProtocolVersion.V3
+            if protocol == ProtocolVersion.V3:
+                appliances = await appliances_store(self.hass, entry.data[CONF_ACCOUNT]) or {}
+                appliance = appliances.get(device_id) or {}
+                appliance_id = int(device_id)
+                entry_cloud = await get_entry_cloud(self.hass, entry)
+                preset_cloud = await get_preset_cloud(self.hass, login=True)
+                if not user_input.get(CONF_TOKEN) or not user_input.get(CONF_KEY):
+                    for cloud in [entry_cloud, preset_cloud]:
+                        keys = await cloud.get_cloud_keys(appliance_id)
+                        keys.update(await MideaCloud.get_default_keys())
+                        for key in keys.values():
+                            if self._check_local_error(appliance_id, **{**appliance, **key}):
+                                _LOGGER.warning('Connect device fail: %s', [appliance_id, key])
+                                continue
+                            user_input.update({
+                                CONF_TOKEN: key[CONF_TOKEN],
+                                CONF_KEY: key[CONF_KEY],
+                            })
+                if not user_input.get(CONF_TOKEN):
+                    self.tip = '获取令牌及密钥失败，请重试或手动获取'
+                    user_input['customize_device_id'] = device_id
+                    return await self.async_step_customize(user_input)
             options = dict(entry.options or {})
             options[device_id] = user_input
             _LOGGER.info('customize_device: %s', [device_id, user_input, options])
@@ -1251,4 +1299,5 @@ class MideaLanOptionsFlowHandler(OptionsFlow, BaseFlow):
         return self.async_show_form(
             step_id='customize',
             data_schema=vol.Schema(schema),
+            description_placeholders={'tip': self.tip},
         )

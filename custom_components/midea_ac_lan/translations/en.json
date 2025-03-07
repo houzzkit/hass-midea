@@ -677,15 +677,23 @@
         "menu_options": {
             "account": "Config account",
             "customize": "Customize devices"
-        },
-        "customize": {
-          "customize_device_id": "Customize Device",
+        }
+      },
+      "customize": {
+        "title": "Customize",
+        "description": "{tip}",
+        "data": {
+          "customize_device_id": "Select Device",
           "ip_address": "IP address",
           "refresh_interval": "Refresh interval (0 means not refreshing actively)",
+          "protocol": "Protocol",
+          "token": "Token",
+          "key": "Key",
           "sensors": "Extra sensors",
           "switches": "Extra controls",
           "customize": "Customize"
-        }
+        },
+        "data_description": {}
       }
     },
     "abort": {

@@ -2,7 +2,7 @@
 
 from enum import IntEnum
 
-from homeassistant.const import Platform
+from homeassistant.const import Platform, CONF_USERNAME, CONF_PASSWORD  # noqa
 
 DOMAIN = "midea_ac_lan"
 COMPONENT = "component"

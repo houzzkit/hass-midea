@@ -50,7 +50,7 @@ from .const import (
     EXTRA_SWITCH,
 )
 from .midea_devices import MIDEA_DEVICES
-from .util import appliances_store, get_preset_cloud
+from .util import appliances_store, get_entry_cloud, get_preset_cloud
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -305,21 +305,10 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
 
 
 async def async_setup_cloud(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
+    await get_entry_cloud(hass, config_entry)
     this_data = hass.data.setdefault(DOMAIN, {})
     entry_data = this_data.setdefault(config_entry.entry_id, {})
     entry_devices = entry_data.setdefault(DEVICES, {})
-
-    cloud = get_midea_cloud(
-        config_entry.data[CONF_SERVER],
-        async_get_clientsession(hass),
-        config_entry.data[CONF_ACCOUNT],
-        config_entry.data[CONF_PASSWORD],
-    )
-    cloud._access_token = config_entry.data.get('access_token')
-    cloud._security._aes_key = config_entry.data.get('security_key', '0').encode()
-    if not cloud._access_token:
-        await cloud.login()
-    entry_data['cloud'] = cloud
 
     device_ids = config_entry.data.get('cloud_devices') or []
     appliances = await appliances_store(hass, config_entry.data[CONF_ACCOUNT]) or {}
@@ -327,24 +316,22 @@ async def async_setup_cloud(hass: HomeAssistant, config_entry: ConfigEntry) -> b
         if device_id not in device_ids:
             continue
         customize = config_entry.options.get(device_id) or {}
-        keys = d.get('cloud_keys') or await MideaCloud.get_default_keys()
-        key = next(iter(keys.values()))
         device = await hass.async_add_import_executor_job(
             device_selector,
             d.get(CONF_NAME, 'Meiju'),
             device_id,
             d.get(CONF_TYPE, 0xAC),
-            customize.get(CONF_HOST) or d.get(CONF_HOST, ''),
+            customize.get(CONF_IP_ADDRESS) or d.get(CONF_HOST, ''),
             d.get(CONF_PORT) or 6444,
-            key.get('token'),
-            key.get('key'),
-            d.get(CONF_PROTOCOL) or ProtocolVersion.V3,
+            customize.get('token', ''),
+            customize.get('key', '00'),
+            customize.get(CONF_PROTOCOL) or ProtocolVersion.V3,
             d.get(CONF_MODEL),
             d.get('model_number', 0),
             '' or {},
         )
         if not device:
-            _LOGGER.warning("Failed to setup device: %s", d)
+            _LOGGER.warning("Failed to setup device: %s", [d, customize])
             continue
         if (refresh_interval := customize.get(CONF_REFRESH_INTERVAL)) is not None:
             device.set_refresh_interval(refresh_interval)

@@ -687,6 +687,24 @@
           "switches": "扩展控制",
           "customize": "自定义"
         }
+      },
+      "customize": {
+        "title": "配置设备",
+        "description": "{tip}",
+        "data": {
+          "customize_device_id": "选择设备",
+          "ip_address": "IP地址",
+          "refresh_interval": "刷新间隔(设0为不进行主动刷新)",
+          "protocol": "协议",
+          "token": "令牌",
+          "key": "密钥",
+          "sensors": "扩展传感器",
+          "switches": "扩展控制",
+          "customize": "自定义"
+        },
+        "data_description": {
+          "protocol": "V3协议的设备需要令牌和密钥，留空可自动获取"
+        }
       }
     },
     "abort": {

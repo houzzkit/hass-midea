@@ -207,6 +207,7 @@ class BaseFlow(ConfigEntryBaseFlow):
                     """ ignore """
                 elif key := await self.get_cloud_token(device_id, **d):
                     customize.update(key)
+                    options[device_id] = customize
             await appliances_store(self.hass, data[CONF_ACCOUNT], self.appliances)
             if entry:
                 self.hass.config_entries.async_update_entry(entry, data=data)
@@ -215,6 +216,7 @@ class BaseFlow(ConfigEntryBaseFlow):
             return self.async_create_entry(
                 title=f"{data[CONF_ACCOUNT]}",
                 data=data,
+                options=options,
             )
 
         # user not login, show login form in UI

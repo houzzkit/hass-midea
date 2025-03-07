@@ -355,8 +355,12 @@ async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> 
     this_data = hass.data.setdefault(DOMAIN, {})
     entry_data = this_data.setdefault(config_entry.entry_id, {})
     entry_devices = entry_data.pop(DEVICES, {})
-    for device_id, device in entry_devices.items():
+    for device_id in list(entry_devices.keys()):
+        device = entry_devices.pop(device_id)
         device.close_socket()
+
+    # Forward the unloading of an entry to platforms
+    await hass.config_entries.async_unload_platforms(config_entry, ALL_PLATFORM)
 
     device_type = config_entry.data.get(CONF_TYPE)
     if device_type == CONF_ACCOUNT:
@@ -367,8 +371,6 @@ async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> 
         if dm is not None:
             dm.close()
         hass.data[DOMAIN][DEVICES].pop(device_id)
-    # Forward the unloading of an entry to platforms
-    await hass.config_entries.async_unload_platforms(config_entry, ALL_PLATFORM)
     return True
 
 

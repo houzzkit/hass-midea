@@ -342,6 +342,7 @@ async def async_setup_cloud(hass: HomeAssistant, config_entry: ConfigEntry) -> b
     return True
 
 async def async_reload_entry(hass: HomeAssistant, config_entry: ConfigEntry):
+    _LOGGER.info("Reload entry: %s", [config_entry.data, config_entry.options])
     await hass.config_entries.async_reload(config_entry.entry_id)
 
 async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:

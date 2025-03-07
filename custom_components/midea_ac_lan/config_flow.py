@@ -358,9 +358,11 @@ class BaseFlow(ConfigEntryBaseFlow):
                             model_number = int(appliance.get("modelNumber", 0))
                         except (ValueError, TypeError):
                             model_number = 0
+                        device_id = f"{appliance.get('applianceCode')}"
                         sn8 = appliance.get("sn8") or "00000000"
                         device_info = {
-                            "name": appliance.get("name"),
+                            "device_id": int(device_id),
+                            "name": appliance.get("name", ""),
                             "type": int(appliance.get("type"), 16),
                             "sn": (
                                 self.cloud._security.aes_decrypt(appliance.get("sn"))
@@ -369,16 +371,13 @@ class BaseFlow(ConfigEntryBaseFlow):
                             ),
                             "sn8": sn8,
                             "model_number": model_number,
-                            "manufacturer_code": appliance.get(
-                                "enterpriseCode",
-                                "0000",
-                            ),
+                            "manufacturer_code": appliance.get("enterpriseCode", "0000"),
                             "host": appliance.get("host"),
                             "model": appliance.get("productModel") or sn8,
                             "online": appliance.get("onlineStatus") == "1",
                             "appliance": appliance,
                         }
-                        appliances[int(appliance["applianceCode"])] = device_info
+                        appliances[device_id] = device_info
         return appliances
 
     def _save_device_config(self, data: dict[str, Any]) -> None:

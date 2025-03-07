@@ -358,8 +358,12 @@ async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> 
     entry_devices = entry_data.pop(DEVICES, {})
     for device_id in list(entry_devices.keys()):
         device = entry_devices.pop(device_id)
-        if isinstance(device, MideaDevice):
+        if not isinstance(device, MideaDevice):
+            continue
+        try:
             device.close()
+        except Exception as exc:
+            _LOGGER.info("Failed to close device: %s", [device_id, exc])
 
     # Forward the unloading of an entry to platforms
     await hass.config_entries.async_unload_platforms(config_entry, ALL_PLATFORM)

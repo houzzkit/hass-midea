@@ -241,7 +241,7 @@ class BaseFlow(ConfigEntryBaseFlow):
                     }
                 keys.update(await MideaCloud.get_default_keys())
             for key in keys.values():
-                if err := await self._check_local_error(appliance_id, **kwargs):
+                if err := await self._check_local_error(appliance_id, **{**kwargs, **key}):
                     _LOGGER.warning('Connect device fail: %s', [appliance_id, cloud._account, key, err])
                     continue
                 self._save_device_config({

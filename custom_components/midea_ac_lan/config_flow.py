@@ -232,12 +232,30 @@ class BaseFlow(ConfigEntryBaseFlow):
             clouds.append(entry_cloud)
         for cloud in clouds:
             keys = await cloud.get_cloud_keys(appliance_id)
-            if cloud == entry_cloud:
+            if cloud == preset_cloud:
+                storage_device = self._load_device_config(device_id) or {}
+                if token := storage_device.get(CONF_TOKEN):
+                    keys[999] = {
+                        CONF_TOKEN: token,
+                        CONF_KEY: storage_device.get(CONF_KEY, ''),
+                    }
                 keys.update(await MideaCloud.get_default_keys())
             for key in keys.values():
                 if err := await self._check_local_error(appliance_id, **kwargs):
                     _LOGGER.warning('Connect device fail: %s', [appliance_id, cloud._account, key, err])
                     continue
+                self._save_device_config({
+                        CONF_DEVICE_ID: appliance_id,
+                        CONF_NAME: kwargs.get(CONF_NAME, ''),
+                        CONF_TYPE: kwargs.get(CONF_TYPE, 0xAC),
+                        CONF_PROTOCOL: kwargs.get(CONF_PROTOCOL, ProtocolVersion.V3),
+                        CONF_IP_ADDRESS: kwargs.get(CONF_IP_ADDRESS, ''),
+                        CONF_PORT: kwargs.get(CONF_PORT, 6444),
+                        CONF_MODEL: kwargs.get(CONF_MODEL, ''),
+                        CONF_SUBTYPE: kwargs.get(CONF_SUBTYPE, 0),
+                        CONF_TOKEN: key[CONF_TOKEN],
+                        CONF_KEY: key[CONF_KEY],
+                    })
                 return key
         return {}
 
@@ -358,6 +376,29 @@ class BaseFlow(ConfigEntryBaseFlow):
                         appliances[int(appliance["applianceCode"])] = device_info
         return appliances
 
+    def _save_device_config(self, data: dict[str, Any]) -> None:
+        """Save device config to json file with device id."""
+        storage_path = Path(self.hass.config.path(STORAGE_PATH))
+        storage_path.mkdir(parents=True, exist_ok=True)
+        record_file = storage_path.joinpath(f"{data[CONF_DEVICE_ID]!s}.json")
+        save_json(str(record_file), data)
+
+    def _load_device_config(self, device_id: str) -> Any:  # noqa: ANN401
+        """Load device config from json file with device id.
+
+        Returns
+        -------
+        Device configuration (json)
+
+        """
+        record_file = Path(
+            self.hass.config.path(f"{STORAGE_PATH}", f"{device_id}.json"),
+        )
+        if record_file.exists():
+            with record_file.open(encoding="utf-8") as f:
+                return load_json(f.name, default={})
+        return {}
+
 class MideaLanConfigFlow(ConfigFlow, BaseFlow, domain=DOMAIN):  # type: ignore[call-arg]
     """Define current integration setup steps.
 
@@ -393,29 +434,6 @@ class MideaLanConfigFlow(ConfigFlow, BaseFlow, domain=DOMAIN):  # type: ignore[c
             format((PRESET_ACCOUNT_DATA[0] ^ PRESET_ACCOUNT_DATA[2]), "X"),
         ).decode("ASCII")
         self.preset_cloud_name: str = SMARTHOME
-
-    def _save_device_config(self, data: dict[str, Any]) -> None:
-        """Save device config to json file with device id."""
-        storage_path = Path(self.hass.config.path(STORAGE_PATH))
-        storage_path.mkdir(parents=True, exist_ok=True)
-        record_file = storage_path.joinpath(f"{data[CONF_DEVICE_ID]!s}.json")
-        save_json(str(record_file), data)
-
-    def _load_device_config(self, device_id: str) -> Any:  # noqa: ANN401
-        """Load device config from json file with device id.
-
-        Returns
-        -------
-        Device configuration (json)
-
-        """
-        record_file = Path(
-            self.hass.config.path(f"{STORAGE_PATH}", f"{device_id}.json"),
-        )
-        if record_file.exists():
-            with record_file.open(encoding="utf-8") as f:
-                return load_json(f.name, default={})
-        return {}
 
     @staticmethod
     def _check_storage_device(device: dict, storage_device: dict) -> bool:

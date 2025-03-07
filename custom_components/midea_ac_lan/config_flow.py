@@ -258,6 +258,7 @@ class BaseFlow(ConfigEntryBaseFlow):
                 return exc
             else:
                 dm.close_socket()
+        _LOGGER.info('Device authenticate success: %s', [device_id, kwargs])
         return None
 
     async def _check_cloud_login(
@@ -1267,6 +1268,7 @@ class MideaLanOptionsFlowHandler(OptionsFlow, BaseFlow):
                 })
 
         elif device_id := self.context.pop('customize_device_id', None):
+            _LOGGER.debug(f"Customize device user input: %s", user_input)
             protocol = user_input.get(CONF_PROTOCOL) or ProtocolVersion.V3
             if protocol == ProtocolVersion.V3:
                 appliances = await appliances_store(self.hass, entry.data[CONF_ACCOUNT]) or {}
@@ -1274,7 +1276,9 @@ class MideaLanOptionsFlowHandler(OptionsFlow, BaseFlow):
                 appliance_id = int(device_id)
                 entry_cloud = await get_entry_cloud(self.hass, entry)
                 preset_cloud = await get_preset_cloud(self.hass, login=True)
-                if not user_input.get(CONF_TOKEN) or not user_input.get(CONF_KEY):
+                if user_input.get(CONF_TOKEN) and user_input.get(CONF_KEY):
+                    _LOGGER.info('Force token/key: %s', user_input)
+                else:
                     for cloud in [preset_cloud, entry_cloud]:
                         keys = await cloud.get_cloud_keys(appliance_id)
                         if cloud == entry_cloud:
@@ -1293,7 +1297,7 @@ class MideaLanOptionsFlowHandler(OptionsFlow, BaseFlow):
                     return await self.async_step_customize(user_input)
             options = dict(entry.options or {})
             options[device_id] = user_input
-            _LOGGER.info('customize_device: %s', [device_id, user_input, options])
+            _LOGGER.info('Customize device update: %s', [device_id, user_input, options])
             self.hass.config_entries.async_update_entry(entry, options=options)
             return self.async_abort(reason='config_saved')
 

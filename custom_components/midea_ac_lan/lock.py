@@ -19,11 +19,11 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up entities for device."""
-    devs = []
+    locks = []
     entry_data = hass.data[DOMAIN].get(config_entry.entry_id, {})
     for device_id, device in entry_data.get(DEVICES, {}).items():
-        extra_switches = config_entry.options.get(CONF_SWITCHES, [])
-        locks = []
+        customize = config_entry.options.get(device_id) or {}
+        extra_switches = customize.get(CONF_SWITCHES, []) or config_entry.options.get(CONF_SWITCHES, [])
         for entity_key, config in cast(
             "dict",
             MIDEA_DEVICES[device.device_type]["entities"],

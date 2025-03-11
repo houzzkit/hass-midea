@@ -210,7 +210,7 @@ class BaseFlow(ConfigEntryBaseFlow):
                     """ ignore """
                 elif customize.get(CONF_TOKEN):
                     """ ignore """
-                elif key := await self.get_cloud_token(device_id, **d):
+                elif key := await self.get_cloud_token(**d):
                     customize.update(key)
                     options[device_id] = customize
             await appliances_store(self.hass, data[CONF_ACCOUNT], self.appliances)
@@ -231,16 +231,18 @@ class BaseFlow(ConfigEntryBaseFlow):
             errors={'base': error} if error else None,
         )
 
-    async def get_cloud_token(self, device_id, entry_cloud=None, **kwargs):
-        appliance_id = int(device_id)
+    async def get_cloud_token(self, entry_cloud=None, **kwargs):
+        appliance_id = int(kwargs.get('appliance_id') or kwargs.get('device_id'))
         preset_cloud = await get_preset_cloud(self.hass, login=True)
         clouds = [preset_cloud]
         if entry_cloud:
             clouds.append(entry_cloud)
+        elif self.cloud:
+            clouds.append(self.cloud)
         for cloud in clouds:
             keys = await cloud.get_cloud_keys(appliance_id)
             if cloud == preset_cloud:
-                storage_device = self._load_device_config(device_id) or {}
+                storage_device = self._load_device_config(str(appliance_id)) or {}
                 if token := storage_device.get(CONF_TOKEN):
                     keys[999] = {
                         CONF_TOKEN: token,
@@ -248,7 +250,7 @@ class BaseFlow(ConfigEntryBaseFlow):
                     }
                 keys.update(await MideaCloud.get_default_keys())
             for key in keys.values():
-                if err := await self._check_local_error(appliance_id, **{**kwargs, **key}):
+                if err := await self._check_local_error(**{**kwargs, **key}):
                     _LOGGER.warning('Connect device fail: %s', [appliance_id, cloud._account, key, err])
                     continue
                 self._save_device_config({
@@ -266,10 +268,11 @@ class BaseFlow(ConfigEntryBaseFlow):
                 return key
         return {}
 
-    async def _check_local_error(self, device_id, **kwargs):
+    async def _check_local_error(self, **kwargs):
+        appliance_id = int(kwargs.get('appliance_id') or kwargs.get('device_id'))
         dm = MideaDevice(
             name='Checker',
-            device_id=int(device_id),
+            device_id=appliance_id,
             device_type=kwargs.get(CONF_TYPE, 0xAC),
             ip_address=kwargs.get(CONF_IP_ADDRESS) or kwargs.get('host'),
             port=kwargs.get(CONF_PORT),
@@ -284,15 +287,15 @@ class BaseFlow(ConfigEntryBaseFlow):
             try:
                 dm.authenticate()
             except AuthException as exc:
-                _LOGGER.warning("Unable to authenticate: %s", [device_id, kwargs], exc_info=True)
+                _LOGGER.warning("Unable to authenticate: %s", [appliance_id, kwargs], exc_info=True)
                 dm.close_socket()
                 return exc
             except SocketException as exc:
-                _LOGGER.warning("Socket closed: %s", [device_id, kwargs], exc_info=True)
+                _LOGGER.warning("Socket closed: %s", [appliance_id, kwargs], exc_info=True)
                 return exc
             else:
                 dm.close_socket()
-                _LOGGER.info('Device authenticate success: %s', [device_id, kwargs])
+                _LOGGER.info('Device authenticate success: %s', [appliance_id, kwargs])
                 return None
         return ValueError('Connect Fail')
 
@@ -1315,7 +1318,7 @@ class MideaLanOptionsFlowHandler(OptionsFlow, BaseFlow):
                 appliance = appliances.get(device_id) or {}
                 if user_input.get(CONF_TOKEN) and user_input.get(CONF_KEY):
                     _LOGGER.info('Force token/key: %s', user_input)
-                elif key := await self.get_cloud_token(device_id, **appliance):
+                elif key := await self.get_cloud_token(**appliance):
                     user_input.update(key)
                 else:
                     self.tip = '获取令牌及密钥失败，请重试或手动获取'

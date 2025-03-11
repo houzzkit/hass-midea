@@ -192,9 +192,11 @@ class BaseFlow(ConfigEntryBaseFlow):
             }
             options = {**entry.options} if entry else {}
             discover_devices = discover()
+            _LOGGER.debug("discover_devices: %s", discover_devices)
             for device_id, d in self.appliances.items():
-                d['discover'] = disc = discover_devices.get(device_id, {})
+                d['discover'] = disc = discover_devices.get(int(device_id), {})
                 d['host'] = host = disc.get(CONF_IP_ADDRESS, '')
+                _LOGGER.debug("discover_device: %s", [device_id, host or disc])
                 d[CONF_PORT] = disc.get(CONF_PORT)
                 d[CONF_PROTOCOL] = protocol = disc.get(CONF_PROTOCOL)
                 customize = options.setdefault(device_id, {})
